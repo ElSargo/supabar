@@ -1,21 +1,19 @@
-use ansi_term::{Style, Colour::Fixed};
+use ansi_term::{Colour::Fixed, Style};
+use owo_colors::OwoColorize;
 use zellij_tile::prelude::*;
-
-use std::collections::HashMap;
-use std::path::PathBuf;
 
 #[derive(Default)]
 struct State {
-    mode_log: HashMap<String, usize>,
-    tabs: Vec<String>,
-    test_runs: usize,
+    tabs: Vec<TabInfo>,
+    session_name: String,
+    git_status: String,
 }
 
 register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self) {
-        subscribe(&[EventType::ModeUpdate, EventType::TabUpdate, EventType::Key]);
+        subscribe(&[EventType::ModeUpdate, EventType::TabUpdate, EventType::FileSystemUpdate]);
     }
 
     fn update(&mut self, event: Event) -> bool {
@@ -23,46 +21,70 @@ impl ZellijPlugin for State {
         match event {
             Event::ModeUpdate(mode_info) => {
                 let mode = format!("{:?}", mode_info.mode);
-                let count = self.mode_log.entry(mode).or_insert(0);
-                *count += 1;
+                self.session_name = mode_info.session_name.unwrap_or_default();
                 should_render = true;
             }
             Event::TabUpdate(tab_info) => {
-                self.tabs = tab_info.iter().map(|t| t.name.clone()).collect();
+                self.tabs = tab_info.clone();
                 should_render = true;
             }
-            Event::Key(key) => {
-                if let Key::Char('n') = key {
-                    self.test_runs += 1;
-                    open_command_pane_floating("cargo", vec!["test"]);
-                }
+            Event::FileSystemUpdate( path ) => {
+               self.git_status = git_info::get().current_branch.unwrap_or_default();
+                
             }
             _ => (),
         };
         should_render
     }
 
-    fn render(&mut self, rows: usize, cols: usize) {
-        let colored_rows = color_bold(CYAN, &rows.to_string());
-        let colored_cols = color_bold(CYAN, &cols.to_string());
-        println!("");
-        println!("I have {} rows and {} columns", colored_rows, colored_cols);
-        println!("");
-        println!("{}", color_bold(GREEN, "Modes:"));
-        for (mode, count) in &self.mode_log {
-            let count = color_bold(ORANGE, &count.to_string());
-            println!("{} -> Changed {} times", mode, count);
-        }
-        println!("");
-        let current_tabs = color_bold(GREEN, "Current Tabs:");
-        let comma = color_bold(ORANGE, ", ");
-        println!("{} {}", current_tabs, self.tabs.join(&comma));
-        println!("");
-        if self.test_runs > 0 {
-            let test_run_count = color_bold(CYAN, &self.test_runs.to_string());
-            println!("Ran tests {} times!", test_run_count);
-        }
+    fn render(&mut self, _rows: usize, cols: usize) {
+        let session = format!(" {} ", self.session_name);
+        let session = session.on_bright_black();
+        let session = session.bold();
+
+        let tabs = render_tabs(&self.tabs);
+
+        let git = &self.git_status; 
+
+        println!("{session}{tabs}{git}");
+
     }
+}
+
+fn render_tabs(info: &[TabInfo]) -> String {
+    let mut res = String::new();
+
+    // NORMAL   master  +21 ~22 -14  󰀪 4 󰌶 4 
+
+    for tab in info {
+        let t = if tab.active {
+            let c = format!(" {}", tab.name)
+                .on_bright_red()
+                .black()
+                .bold()
+                .to_string();
+            format!(
+                "{}{}{}",
+                "".bright_black().on_bright_red(),
+                c,
+                "".bright_red().on_bright_black(),
+            )
+        } else {
+            let c = format!(" {}", tab.name)
+                .on_black()
+                .bright_black()
+                .bold()
+                .to_string();
+            format!(
+                "{}{}{}",
+                "".bright_black().on_black(),
+                c,
+                "".black().on_bright_black(),
+            )
+        };
+        res.push_str(&t);
+    }
+    res
 }
 
 pub const CYAN: u8 = 51;
