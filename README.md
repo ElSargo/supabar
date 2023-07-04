@@ -27,16 +27,19 @@ zellij action start-or-reload-plugin file:path-to-file/zellij-supabar.wasm
 
 ## Building
 Youll need a rust toolchain with the wasm32-wasi target enabled.
-This can be done with nix via
+
+### With nix
 ```fish
-nix develop
+nix build
 ```
+Where the result is in `./result/bin/zellij-supabar.wasm`
+
+### With rustup
 Or by using rustup
 ```fish
 rustup default stable
 rustup target add wasm32-wasi
 ```
-
 Then run 
 ```
 cargo build --release
