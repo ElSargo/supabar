@@ -12,7 +12,7 @@ struct State {
     colors: Palette,
     time: String,
     mode: String,
-    clip_message_time: Option<Instant>,
+    clip_message_timer: Option<Instant>,
     branch: Option<String>,
 }
 
@@ -35,7 +35,6 @@ impl ZellijPlugin for State {
             EventType::TabUpdate,
             EventType::FileSystemUpdate,
             EventType::Timer,
-            EventType::PaneUpdate,
             EventType::CopyToClipboard,
         ]);
     }
@@ -44,7 +43,7 @@ impl ZellijPlugin for State {
         let mut should_render = false;
         match event {
             Event::CopyToClipboard(_) => {
-                self.clip_message_time = Some(std::time::Instant::now());
+                self.clip_message_timer = Some(std::time::Instant::now());
                 should_render = true;
             }
             Event::ModeUpdate(mode_info) => {
@@ -55,7 +54,7 @@ impl ZellijPlugin for State {
                 should_render = true;
             }
             Event::TabUpdate(tab_info) => {
-                self.tabs = tab_info.clone();
+                self.tabs = tab_info;
                 should_render = true;
             }
             Event::Timer(_) => {
@@ -63,11 +62,11 @@ impl ZellijPlugin for State {
                 self.time = time();
 
                 //Clipboard
-                self.clip_message_time.map(|time| {
+                if let Some(time) = self.clip_message_timer {
                     if Instant::now().duration_since(time).as_secs() > 2 {
-                        self.clip_message_time = None;
+                        self.clip_message_timer = None;
                     }
-                });
+                }
 
                 zellij_tile::prelude::set_timeout(1.0);
                 should_render = true;
@@ -101,7 +100,7 @@ impl ZellijPlugin for State {
                 orange
             },
             black,
-            &format!("{}", self.mode.to_uppercase()),
+            &self.mode.to_uppercase(),
         );
         let mode = format!(
             "{}{}{}",
@@ -139,7 +138,7 @@ impl ZellijPlugin for State {
         let time = color(white, gray, &format!(" {} ", self.time));
         let time_width = 13;
 
-        let clip_message = if self.clip_message_time.is_some() {
+        let clip_message = if self.clip_message_timer.is_some() {
             "Coppied! "
         } else {
             ""
@@ -153,7 +152,7 @@ impl ZellijPlugin for State {
                 format!(
                     "{}{}{}",
                     color(black, gray, ""),
-                    color(blue, black, &name),
+                    color(blue, black, name),
                     color(black, gray, "")
                 ),
                 name.width() + 2,
@@ -198,7 +197,7 @@ impl ZellijPlugin for State {
 }
 
 // Inlined from https://lib.rs/crates/textwidth
-fn compute_truncated_lenght(output: &String, cols: usize) -> usize {
+fn compute_truncated_lenght(output: &str, cols: usize) -> usize {
     /// ignored when computing the text width.
     const CSI: (char, char) = ('\x1b', '[');
     /// The final bytes of an ANSI escape sequence must be in this range.
@@ -210,8 +209,7 @@ fn compute_truncated_lenght(output: &String, cols: usize) -> usize {
         let mut width = 0;
         while let Some(ch) = chars.next() {
             chrs += 1;
-
-            if (|| {
+            let mut skip_ansi = || {
                 let chars = &mut chars;
                 if ch == CSI.0 && chars.next() == Some(CSI.1) {
                     chrs += 1;
@@ -226,7 +224,8 @@ fn compute_truncated_lenght(output: &String, cols: usize) -> usize {
                     }
                 }
                 false
-            })() {
+            };
+            if skip_ansi() {
                 continue;
             }
             width += unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
