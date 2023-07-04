@@ -1,7 +1,6 @@
-use std::time::Instant;
-
 use ansi_term::{Color, Style};
 use chrono::{DateTime, Local, Timelike};
+use std::time::Instant;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 use zellij_utils::data::Palette;
@@ -30,7 +29,7 @@ impl ZellijPlugin for State {
             .ok()
             .map(|mut s| s.split_off(16))
             .map(|name| name.chars().take_while(|c| !c.is_whitespace()).collect())
-            .map(|name: String| format!("  {name} "));
+            .map(|name: String| format!(" {name}"));
         subscribe(&[
             EventType::ModeUpdate,
             EventType::TabUpdate,
@@ -89,6 +88,7 @@ impl ZellijPlugin for State {
         let purple = into_col(self.colors.red);
         let black = into_col(self.colors.fg);
         let blue = into_col(self.colors.blue);
+        let green = into_col(self.colors.green);
 
         let session = color(white, gray, &format!(" {} ", self.session_name));
         let session_width = self.session_name.width() + 2;
@@ -109,34 +109,52 @@ impl ZellijPlugin for State {
             mode,
             color(black, gray, ""),
         );
+        let active_tab = self.tabs.iter().find(|tab| tab.active);
+        let layout = active_tab.and_then(|tab| tab.active_swap_layout_name.as_ref());
+
+        let (layout, layout_width) = match &layout {
+            Some(name) => (
+                if active_tab.is_some_and(|b| b.is_swap_layout_dirty) {
+                    format!(
+                        "{}{}{}",
+                        color(green, gray, ""),
+                        color(gray, green, &format!("{} ", name.to_uppercase())),
+                        color(gray, green, "")
+                    )
+                } else {
+                    format!(
+                        "{}{}{}",
+                        color(green, gray, ""),
+                        color(black, green, &format!("{} ", name.to_uppercase())),
+                        color(gray, green, "")
+                    )
+                },
+                name.width() + 3,
+            ),
+
+            None => ("".to_owned(), 0),
+        };
 
         let mode_width = self.mode.width() + 2;
         let time = color(white, gray, &format!(" {} ", self.time));
         let time_width = 13;
 
         let clip_message = if self.clip_message_time.is_some() {
-            "Coppied!"
+            "Coppied! "
         } else {
             ""
         };
         let clip_width = clip_message.width();
         let clip = color(white, gray, clip_message);
 
-        let (tabs, tabs_width) = render_tabs(
-            &self.tabs,
-            into_col(self.colors.green),
-            black,
-            gray,
-            into_col(self.colors.orange),
-            white,
-        );
+        let (tabs, tabs_width) = render_tabs(&self.tabs, green, black, gray, orange, white);
         let (branch, branch_width) = match &self.branch {
             Some(name) => (
                 format!(
                     "{}{}{}",
                     color(black, gray, ""),
                     color(blue, black, &name),
-                    color(gray, black, "")
+                    color(black, gray, "")
                 ),
                 name.width() + 2,
             ),
@@ -145,9 +163,14 @@ impl ZellijPlugin for State {
         };
 
         let left = [session, mode, tabs].join("");
-        let right = [clip, branch, time].join("");
-        let content_len: usize =
-            session_width + mode_width + tabs_width + clip_width + time_width + branch_width;
+        let right = [clip, layout, branch, time].join("");
+        let content_len: usize = session_width
+            + mode_width
+            + tabs_width
+            + clip_width
+            + time_width
+            + branch_width
+            + layout_width;
         let filler = color(
             gray,
             gray,
@@ -155,11 +178,65 @@ impl ZellijPlugin for State {
                 .iter()
                 .collect::<String>(),
         );
-        let output = [left, filler, right].join("");
-        print!("{output}",);
+        let content = [left, filler, right].join("");
+
+        let output = if content_len > cols {
+            let plus = color(white, orange, "+");
+            let chrs = compute_truncated_lenght(&content, cols.saturating_sub(1));
+            format!("{}{plus}", content.chars().take(chrs).collect::<String>())
+        } else {
+            content
+        };
+
+        // let actual = textwrap::core::display_width(&output);
+        // println!("computed {} columns {} actual {}", cos, cols, actual);
+
+        print!("{output}");
 
         // println!("{session}");
     }
+}
+
+// Inlined from https://lib.rs/crates/textwidth
+fn compute_truncated_lenght(output: &String, cols: usize) -> usize {
+    /// ignored when computing the text width.
+    const CSI: (char, char) = ('\x1b', '[');
+    /// The final bytes of an ANSI escape sequence must be in this range.
+    const ANSI_FINAL_BYTE: std::ops::RangeInclusive<char> = '\x40'..='\x7e';
+    let mut chrs = 0;
+    {
+        let text: &str = output;
+        let mut chars = text.chars();
+        let mut width = 0;
+        while let Some(ch) = chars.next() {
+            chrs += 1;
+
+            if (|| {
+                let chars = &mut chars;
+                if ch == CSI.0 && chars.next() == Some(CSI.1) {
+                    chrs += 1;
+                    // We have found the start of an ANSI escape code, typically
+                    // used for colored terminal text. We skip until we find a
+                    // "final byte" in the range 0x40–0x7E.
+                    for ch in chars {
+                        chrs += 1;
+                        if ANSI_FINAL_BYTE.contains(&ch) {
+                            return true;
+                        }
+                    }
+                }
+                false
+            })() {
+                continue;
+            }
+            width += unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+            if width == cols {
+                break;
+            }
+        }
+        width
+    };
+    chrs
 }
 
 fn render_tabs(
@@ -234,15 +311,6 @@ fn render_tabs(
     (res, total_width)
 }
 
-pub const CYAN: u8 = 51;
-pub const GRAY_LIGHT: u8 = 238;
-pub const GRAY_DARK: u8 = 245;
-pub const WHITE: u8 = 15;
-pub const BLACK: u8 = 16;
-pub const RED: u8 = 124;
-pub const GREEN: u8 = 154;
-pub const ORANGE: u8 = 166;
-
 fn color(fg: Color, bg: Color, text: &str) -> String {
     format!("{}", Style::new().fg(fg).on(bg).bold().paint(text))
 }
@@ -253,8 +321,14 @@ fn time() -> String {
     let minute = local.minute();
     let second = local.second();
 
-    let hour_12 = if hour > 12 { hour - 12 } else { hour };
-    let am_pm = if hour >= 12 { "PM" } else { "AM" };
+    let hour_12 = if hour == 12 || hour == 0 {
+        12
+    } else if hour > 12 {
+        hour - 12
+    } else {
+        hour
+    };
+    let am_pm = if hour >= 12 { "AM" } else { "PM" };
 
     format!("{:02}:{:02}:{:02} {}", hour_12, minute, second, am_pm)
 }
