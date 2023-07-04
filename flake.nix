@@ -16,12 +16,7 @@
         overlays = [ rust-overlay.overlay ];
         pkgs = import nixpkgs { inherit system overlays; };
         rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-        inputs = [ rust pkgs.wasm-bindgen-cli pkgs.watchexec ];
-      in
-      {
-
-
-        devShell = pkgs.mkShell { packages = inputs; };
-      }
-    );
+        inputs =
+          [ rust pkgs.wasm-bindgen-cli pkgs.watchexec pkgs.rust-analyzer ];
+      in { devShell = pkgs.mkShell { packages = inputs; }; });
 }
