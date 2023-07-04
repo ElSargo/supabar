@@ -2,12 +2,16 @@
 name = "zellij-supabar"
 version = "0.1.0"
 authors = ["Oliver Sargison <sargo@sargo.cc>"]
-edition = "2018"
+edition = "2021"
+description = "Status bar for zellij"
+license-file = "LICENCE"
+repository = "https://github.com/ElSargo/supabar"
+keywords = ["plugin", "bar"]
+categories = ["development-tools"] 
+readme = "README.md"
 
 [dependencies]
 ansi_term = "0.12.1"
 zellij-tile = "0.37.2"
-zellij-utils = "0.37.2"
 chrono = "0.4.0"
 unicode-width = "0.1.10"
-textwrap = "0.16.0"

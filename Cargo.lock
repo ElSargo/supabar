@@ -2069,11 +2069,6 @@ name = "textwrap"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "222a222a5bfe1bba4a77b45ec488a741b3cb8872e5e499451fd7d0129c9c7c3d"
-dependencies = [
- "smawk",
- "unicode-linebreak",
- "unicode-width",
-]
 
 [[package]]
 name = "thiserror"
@@ -2619,10 +2614,8 @@ version = "0.1.0"
 dependencies = [
  "ansi_term",
  "chrono",
- "textwrap 0.16.0",
  "unicode-width",
  "zellij-tile",
- "zellij-utils",
 ]
 
 [[package]]
