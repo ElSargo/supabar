@@ -21,7 +21,7 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self) {
-        zellij_tile::prelude::set_timeout(1.0);
+        zellij_tile::prelude::set_timeout(0.0);
         #[cfg(not(debug_assertions))]
         {
             zellij_tile::prelude::set_selectable(false);
@@ -30,7 +30,7 @@ impl ZellijPlugin for State {
             .ok()
             .map(|mut s| s.split_off(16))
             .map(|name| name.chars().take_while(|c| !c.is_whitespace()).collect())
-            .map(|name: String| format!(" {name}"));
+            .map(|name: String| format!("  {name} "));
         subscribe(&[
             EventType::ModeUpdate,
             EventType::TabUpdate,
@@ -87,21 +87,30 @@ impl ZellijPlugin for State {
         let gray = into_col(self.colors.black);
         let orange = into_col(self.colors.orange);
         let purple = into_col(self.colors.red);
+        let black = into_col(self.colors.fg);
+        let blue = into_col(self.colors.blue);
 
         let session = color(white, gray, &format!(" {} ", self.session_name));
         let session_width = self.session_name.width() + 2;
         let mode = color(
             if self.mode == "Normal" {
-                white
+                blue
             } else if self.mode == "Locked" {
                 purple
             } else {
                 orange
             },
-            gray,
-            &format!("{} ", self.mode.to_uppercase()),
+            black,
+            &format!("{}", self.mode.to_uppercase()),
         );
-        let mode_width = self.mode.width() + 1;
+        let mode = format!(
+            "{}{}{}",
+            color(black, gray, ""),
+            mode,
+            color(black, gray, ""),
+        );
+
+        let mode_width = self.mode.width() + 2;
         let time = color(white, gray, &format!(" {} ", self.time));
         let time_width = 13;
 
@@ -116,14 +125,24 @@ impl ZellijPlugin for State {
         let (tabs, tabs_width) = render_tabs(
             &self.tabs,
             into_col(self.colors.green),
-            into_col(self.colors.gray),
+            black,
             gray,
             into_col(self.colors.orange),
             white,
         );
-        let branch = self.branch.clone().unwrap_or_default();
-        let branch_width = branch.width();
-        let branch = color(into_col(self.colors.blue), gray, &branch);
+        let (branch, branch_width) = match &self.branch {
+            Some(name) => (
+                format!(
+                    "{}{}{}",
+                    color(black, gray, ""),
+                    color(blue, black, &name),
+                    color(gray, black, "")
+                ),
+                name.width() + 2,
+            ),
+
+            None => ("".to_owned(), 0),
+        };
 
         let left = [session, mode, tabs].join("");
         let right = [clip, branch, time].join("");
