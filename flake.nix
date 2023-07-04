@@ -3,6 +3,7 @@
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
+    naersk.url = "github:nix-community/naersk";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -10,17 +11,24 @@
     nixpkgs.url = "nixpkgs/nixos-unstable";
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay }:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, naersk }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ rust-overlay.overlays.default ];
-        pkgs = import nixpkgs { inherit system overlays; };
         rust = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-        inputs = [ pkgs.wasm-bindgen-cli rust ];
+        naersk_wasm = pkgs.callPackage naersk { rustc = rust; };
+        pkgs = import nixpkgs { inherit system overlays; };
 
-      in {
+      in rec {
+        packages.default = naersk_wasm.buildPackage {
+          name = "zellij-supabar";
+          src = ./.;
+          copyLibs = true;
+          CARGO_BUILD_TARGET = "wasm32-wasi";
+        };
+        apps.default = packages.default;
         devShell = pkgs.mkShell {
-          packages = with pkgs; [ watchexec rust-analyzer ] ++ inputs;
+          packages = with pkgs; [ watchexec rust-analyzer wasm-bindgen-cli rust ];
         };
       });
 }
