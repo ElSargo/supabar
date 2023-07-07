@@ -3,33 +3,59 @@ use chrono::{DateTime, Local, Timelike};
 use std::time::Instant;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use zellij_tile::prelude::*;
-// use zellij_utils::data::Palette;
+
+const LSEP: &str = "";
+const RSEP: &str = "";
 
 #[derive(Default)]
 struct State {
     tabs: Vec<TabInfo>,
     session_name: String,
-    colors: Palette,
     time: String,
     mode: String,
     clip_message_timer: Option<Instant>,
     branch: Option<String>,
+    colors: Colors,
+}
+
+impl Default for Colors {
+    fn default() -> Self {
+        Self {
+            white: Color::Black,
+            gray: Color::Black,
+            orange: Color::Black,
+            purple: Color::Black,
+            black: Color::Black,
+            blue: Color::Black,
+            green: Color::Black,
+        }
+    }
+}
+
+struct Colors {
+    black: Color,
+    blue: Color,
+    gray: Color,
+    green: Color,
+    orange: Color,
+    purple: Color,
+    white: Color,
 }
 
 register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self) {
-        zellij_tile::prelude::set_timeout(0.0);
         #[cfg(not(debug_assertions))]
-        {
-            zellij_tile::prelude::set_selectable(false);
-        }
+        zellij_tile::prelude::set_selectable(false);
+
+        zellij_tile::prelude::set_timeout(0.0);
         self.branch = std::fs::read_to_string("/host/.git/HEAD")
             .ok()
             .map(|mut s| s.split_off(16))
             .map(|name| name.chars().take_while(|c| !c.is_whitespace()).collect())
             .map(|name: String| format!(" {name}"));
+
         subscribe(&[
             EventType::ModeUpdate,
             EventType::TabUpdate,
@@ -42,13 +68,21 @@ impl ZellijPlugin for State {
     fn update(&mut self, event: Event) -> bool {
         match event {
             Event::CopyToClipboard(_) => {
-                self.clip_message_timer = Some(std::time::Instant::now());
+                self.clip_message_timer = Some(Instant::now());
             }
             Event::ModeUpdate(mode_info) => {
                 let mode = format!("{:?}", mode_info.mode);
                 self.mode = mode;
                 self.session_name = mode_info.session_name.unwrap_or_default();
-                self.colors = mode_info.style.colors;
+                self.colors = Colors {
+                    black: into_color(mode_info.style.colors.fg),
+                    blue: into_color(mode_info.style.colors.blue),
+                    gray: into_color(mode_info.style.colors.black),
+                    green: into_color(mode_info.style.colors.green),
+                    orange: into_color(mode_info.style.colors.orange),
+                    purple: into_color(mode_info.style.colors.red),
+                    white: into_color(mode_info.style.colors.white),
+                }
             }
             Event::TabUpdate(tab_info) => {
                 self.tabs = tab_info;
@@ -73,52 +107,48 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, _rows: usize, cols: usize) {
-        let white = into_color(self.colors.white);
-        let gray = into_color(self.colors.black);
-        let orange = into_color(self.colors.orange);
-        let purple = into_color(self.colors.red);
-        let black = into_color(self.colors.fg);
-        let blue = into_color(self.colors.blue);
-        let green = into_color(self.colors.green);
-
-        let session = color_and_bold(white, gray, &format!(" {} ", self.session_name));
-        let session_width = self.session_name.width() + 2;
-        let mode = color_and_bold(
-            if self.mode == "Normal" {
-                blue
-            } else if self.mode == "Locked" {
-                purple
-            } else {
-                orange
-            },
-            black,
-            &self.mode.to_uppercase(),
-        );
-        let mode = format!(
-            "{}{}{}",
-            color_and_bold(black, gray, ""),
+        let State {
+            tabs,
+            session_name,
+            time,
             mode,
-            color_and_bold(black, gray, ""),
+            clip_message_timer,
+            branch,
+            colors,
+        } = self;
+        let session = color_and_bold(colors.white, colors.gray, &format!(" {} ", session_name));
+        let session_width = session_name.width() + 2;
+        let mode_color = if mode == "Normal" {
+            colors.blue
+        } else if mode == "Locked" {
+            colors.purple
+        } else {
+            colors.orange
+        };
+
+        let mode_width = mode.width() + 2;
+        let mode_content = color_concat(
+            (colors.black, colors.gray, LSEP),
+            (mode_color, colors.black, &mode.to_uppercase()),
+            (colors.black, colors.gray, RSEP),
         );
-        let active_tab = self.tabs.iter().find(|tab| tab.active);
+
+        let active_tab = tabs.iter().find(|tab| tab.active);
         let layout = active_tab.and_then(|tab| tab.active_swap_layout_name.as_ref());
 
+        let format_layout = |accent, name: &str| {
+            color_concat(
+                (colors.green, colors.gray, LSEP),
+                (accent, colors.green, &format!("{} ", name.to_uppercase())),
+                (colors.gray, colors.green, LSEP),
+            )
+        };
         let (layout, layout_width) = match &layout {
             Some(name) => (
                 if active_tab.is_some_and(|b| b.is_swap_layout_dirty) {
-                    format!(
-                        "{}{}{}",
-                        color_and_bold(green, gray, ""),
-                        color_and_bold(gray, green, &format!("{} ", name.to_uppercase())),
-                        color_and_bold(gray, green, "")
-                    )
+                    format_layout(colors.green, name)
                 } else {
-                    format!(
-                        "{}{}{}",
-                        color_and_bold(green, gray, ""),
-                        color_and_bold(black, green, &format!("{} ", name.to_uppercase())),
-                        color_and_bold(gray, green, "")
-                    )
+                    format_layout(colors.black, name)
                 },
                 name.width() + 3,
             ),
@@ -126,26 +156,24 @@ impl ZellijPlugin for State {
             None => (String::new(), 0),
         };
 
-        let mode_width = self.mode.width() + 2;
-        let time = color_and_bold(white, gray, &format!(" {} ", self.time));
+        let time = color_and_bold(colors.white, colors.gray, &format!(" {} ", time));
         let time_width = 13;
 
-        let clip_message = if self.clip_message_timer.is_some() {
+        let clip_message = if clip_message_timer.is_some() {
             "Coppied! "
         } else {
             ""
         };
         let clip_width = clip_message.width();
-        let clip = color_and_bold(white, gray, clip_message);
+        let clip = color_and_bold(colors.white, colors.gray, clip_message);
 
-        let (tabs, tabs_width) = render_tabs(&self.tabs, green, black, gray, orange, white);
-        let (branch, branch_width) = match &self.branch {
+        let (tabs, tabs_width) = render_tabs(&tabs, &colors);
+        let (branch, branch_width) = match &branch {
             Some(name) => (
-                format!(
-                    "{}{}{}",
-                    color_and_bold(black, gray, ""),
-                    color_and_bold(blue, black, name),
-                    color_and_bold(black, gray, "")
+                color_concat(
+                    (colors.black, colors.gray, LSEP),
+                    (colors.blue, colors.black, name),
+                    (colors.black, colors.gray, RSEP),
                 ),
                 name.width() + 2,
             ),
@@ -153,7 +181,7 @@ impl ZellijPlugin for State {
             None => (String::new(), 0),
         };
 
-        let left = [session, mode, tabs].join("");
+        let left = [session, mode_content, tabs].join("");
         let right = [clip, layout, branch, time].join("");
         let content_len: usize = session_width
             + mode_width
@@ -163,8 +191,8 @@ impl ZellijPlugin for State {
             + branch_width
             + layout_width;
         let filler = color_and_bold(
-            gray,
-            gray,
+            colors.gray,
+            colors.gray,
             &vec![' '; cols.saturating_sub(content_len)]
                 .iter()
                 .collect::<String>(),
@@ -172,9 +200,10 @@ impl ZellijPlugin for State {
         let content = [left, filler, right].join("");
 
         let output = if content_len > cols {
-            let plus = color_and_bold(white, orange, "+");
+            let plus = color_and_bold(colors.white, colors.orange, "+");
             let chrs = get_chars_to_truncate(&content, cols.saturating_sub(1));
-            format!("{}{plus}", content.chars().take(chrs).collect::<String>())
+            let truncated = content.chars().take(chrs).collect::<String>();
+            [truncated, plus].concat()
         } else {
             content
         };
@@ -236,14 +265,7 @@ fn get_chars_to_truncate(output: &str, columns: usize) -> usize {
 }
 
 /// Renders the tabs section, returns the content and the width
-fn render_tabs(
-    info: &[TabInfo],
-    green: Color,
-    black: Color,
-    gray: Color,
-    orange: Color,
-    white: Color,
-) -> (String, usize) {
+fn render_tabs(info: &[TabInfo], colors: &Colors) -> (String, usize) {
     let mut res = String::new();
     let mut total_width = 0;
 
@@ -271,35 +293,32 @@ fn render_tabs(
         let c = if extras.is_empty() {
             format!(" {}", tab.name)
         } else {
-            let (l, r, n) = if tab.active {
-                (
-                    color_and_bold(orange, green, "<"),
-                    color_and_bold(orange, green, ">"),
-                    color_and_bold(white, green, &f),
-                )
-            } else {
-                (
-                    color_and_bold(orange, black, "<"),
-                    color_and_bold(orange, black, ">"),
-                    color_and_bold(white, black, &f),
+            let fmt = |col| {
+                color_concat(
+                    (colors.orange, col, "<"),
+                    (colors.white, col, &f),
+                    (colors.orange, col, ">"),
                 )
             };
-            format!(" {} {l}{}{r}", tab.name, n)
+            let tab_content = if tab.active {
+                fmt(colors.green)
+            } else {
+                fmt(colors.black)
+            };
+            format!(" {} {tab_content }", tab.name)
         };
 
         let t = if tab.active {
-            format!(
-                "{}{}{}",
-                color_and_bold(gray, green, ""),
-                color_and_bold(black, green, &c),
-                color_and_bold(green, gray, ""),
+            color_concat(
+                (colors.gray, colors.green, RSEP),
+                (colors.gray, colors.green, &c),
+                (colors.green, colors.gray, RSEP),
             )
         } else {
-            format!(
-                "{}{}{}",
-                color_and_bold(gray, black, ""),
-                color_and_bold(gray, black, &c),
-                color_and_bold(black, gray, ""),
+            color_concat(
+                (colors.gray, colors.black, RSEP),
+                (colors.gray, colors.black, &c),
+                (colors.black, colors.gray, RSEP),
             )
         };
         res.push_str(&t);
@@ -309,7 +328,20 @@ fn render_tabs(
 
 /// Apply a foreground and background color, and make the text bold
 fn color_and_bold(fg: Color, bg: Color, text: &str) -> String {
-    format!("{}", Style::new().fg(fg).on(bg).bold().paint(text))
+    Style::new().fg(fg).on(bg).bold().paint(text).to_string()
+}
+
+fn color_concat(
+    c1: (Color, Color, &str),
+    c2: (Color, Color, &str),
+    c3: (Color, Color, &str),
+) -> String {
+    [
+        color_and_bold(c1.0, c1.1, c1.2),
+        color_and_bold(c2.0, c2.1, c2.2),
+        color_and_bold(c3.0, c3.1, c3.2),
+    ]
+    .concat()
 }
 
 /// Formatted local time
@@ -319,7 +351,7 @@ fn time() -> String {
     let minute = local.minute();
     let second = local.second();
 
-    let hour_12 = if hour == 12 || hour == 0 {
+    let hour_12 = if hour == 0 {
         12
     } else if hour > 12 {
         hour - 12
