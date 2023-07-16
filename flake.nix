@@ -1,5 +1,5 @@
 {
-  description = "Minimal rust wasm32-unknown-unknown example";
+  description = "Status bar for zellij";
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
@@ -26,6 +26,7 @@
           copyLibs = true;
           CARGO_BUILD_TARGET = "wasm32-wasi";
         };
+        overlays.default = (self: super: { supabar = packages.default; });
         apps.default = packages.default;
         devShell = pkgs.mkShell {
           packages = with pkgs; [ watchexec rust-analyzer wasm-bindgen-cli rust ];
