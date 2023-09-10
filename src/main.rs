@@ -1,5 +1,6 @@
 use ansi_term::{Color, Style};
 use chrono::{DateTime, Local, Timelike};
+use std::collections::BTreeMap;
 use std::time::Instant;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use zellij_tile::prelude::*;
@@ -45,7 +46,7 @@ struct Colors {
 register_plugin!(State);
 
 impl ZellijPlugin for State {
-    fn load(&mut self) {
+    fn load(&mut self, _config: BTreeMap<String, String>) {
         #[cfg(not(debug_assertions))]
         zellij_tile::prelude::set_selectable(false);
 
@@ -167,7 +168,8 @@ impl ZellijPlugin for State {
         let clip_width = clip_message.width();
         let clip = color_and_bold(colors.white, colors.gray, clip_message);
 
-        let (tabs, tabs_width) = render_tabs(&tabs, &colors);
+        let info = &tabs;
+        let (tabs, tabs_width) = render_tabs(info, colors);
         let (branch, branch_width) = match &branch {
             Some(name) => (
                 color_concat(

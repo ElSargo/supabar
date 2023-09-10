@@ -1,6 +1,6 @@
 [package]
 name = "zellij-supabar"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Oliver Sargison <sargo@sargo.cc>"]
 edition = "2021"
 description = "Status bar for zellij"
@@ -12,6 +12,6 @@ readme = "README.md"
 
 [dependencies]
 ansi_term = "0.12.1"
-zellij-tile = "0.37.2"
 chrono = "0.4.0"
 unicode-width = "0.1.10"
+zellij-tile = "0.38.1"
