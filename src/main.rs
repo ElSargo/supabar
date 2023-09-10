@@ -55,8 +55,6 @@ impl ZellijPlugin for State {
             PermissionType::OpenTerminalsOrPlugins,
             PermissionType::WriteToStdin,
         ]);
-        #[cfg(not(debug_assertions))]
-        zellij_tile::prelude::set_selectable(false);
 
         zellij_tile::prelude::set_timeout(0.0);
         self.branch = std::fs::read_to_string("/host/.git/HEAD")
@@ -72,6 +70,8 @@ impl ZellijPlugin for State {
             EventType::Timer,
             EventType::CopyToClipboard,
         ]);
+        #[cfg(not(debug_assertions))]
+        zellij_tile::prelude::set_selectable(false);
     }
 
     fn update(&mut self, event: Event) -> bool {
