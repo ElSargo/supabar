@@ -3,7 +3,7 @@ use chrono::{DateTime, Local, Timelike};
 use std::collections::BTreeMap;
 use std::time::Instant;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
-use zellij_tile::prelude::*;
+use zellij_tile::{prelude::*, shim::plugin_api::plugin_permission::ProtobufPermissionType};
 
 const LSEP: &str = "";
 const RSEP: &str = "";
@@ -47,6 +47,14 @@ register_plugin!(State);
 
 impl ZellijPlugin for State {
     fn load(&mut self, _config: BTreeMap<String, String>) {
+        request_permission(&[
+            PermissionType::ReadApplicationState,
+            PermissionType::OpenFiles,
+            PermissionType::ChangeApplicationState,
+            PermissionType::RunCommands,
+            PermissionType::OpenTerminalsOrPlugins,
+            PermissionType::WriteToStdin,
+        ]);
         #[cfg(not(debug_assertions))]
         zellij_tile::prelude::set_selectable(false);
 
@@ -184,6 +192,7 @@ impl ZellijPlugin for State {
         };
 
         let left = [session, mode_content, tabs].join("");
+        // println!("Left: {:?}", left);
         let right = [clip, layout, branch, time].join("");
         let content_len: usize = session_width
             + mode_width
