@@ -20,14 +20,23 @@
         pkgs = import nixpkgs { inherit system overlays; };
 
       in rec {
-        packages.default = naersk_wasm.buildPackage {
-          name = "zellij-supabar";
-          src = ./.;
-          copyLibs = true;
-          CARGO_BUILD_TARGET = "wasm32-wasi";
+        packages = rec {
+          default = supabar;
+          supabar= naersk_wasm.buildPackage {
+            name = "zellij-supabar";
+            src = ./.;
+            copyLibs = true;
+            CARGO_BUILD_TARGET = "wasm32-wasi";
+          };
+          zellij = pkgs.zellij;
         };
-        overlays.default = (self: super: { supabar = packages.default; });
-        apps.default = packages.default;
+        overlays = rec {
+          default = supabar;
+          all = (self: super: { supabar = packages.default;  zellij = packages.zellij; });
+          supabar = (self: super: { supabar = packages.default; });
+          zellij = (self: super: { zellij = packages.zellij; });
+        };
+        apps.default = packages.zellij;
         devShell = pkgs.mkShell {
           packages = with pkgs; [ watchexec rust-analyzer wasm-bindgen-cli rust ];
         };
